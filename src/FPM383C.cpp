@@ -1,8 +1,11 @@
 #include "FPM383C.h"
 
 FPM383C::FPM383C(int rxPin, int txPin, int touchPin) {
-  serial = new SoftwareSerial(rxPin, txPin);
-  password = 0x00000000;
+  // serial = new SoftwareSerial(rxPin, txPin);
+  // serial = new HardwareSerial(rxPin, txPin);
+ serial = new HardwareSerial(1);
+  serial->begin(57600, SERIAL_8N1, rxPin, txPin, false); // Default baudrate, can be changed in begin()
+    password = 0x00000000;
   this->touchPin = touchPin;
   lastError = FP_ERROR_SUCCESS;
   debugEnabled = false;
@@ -13,11 +16,12 @@ FPM383C::FPM383C(int rxPin, int txPin, int touchPin) {
 }
 
 FPM383C::~FPM383C() {
+  serial->end();
   delete serial;
 }
 
 bool FPM383C::begin(uint32_t baudrate) {
-  serial->begin(baudrate);
+  serial->begin(baudrate, SERIAL_8N1); // Pins already set in constructor
   delay(200); // Wait for module initialization
   
   // Check if module is responsive
@@ -280,7 +284,70 @@ bool FPM383C::reset() {
   
   return errorCode == FP_ERROR_SUCCESS;
 }
+//  Fingerprint feature information command
+bool FPM383C::featureInformation(uint8_t respLen){
+uint8_t data[2];
+data[0] = (respLen >> 8) & 0xFF;
+data[1] = respLen & 0xFF;
 
+sendCommand(FP_CMD_FINGERPRINT_0, FP_CMD_FEATURE_INFORMATION, data, 2);
+
+uint32_t errorCode;
+uint16_t dataLen;
+uint8_t responseData[2];
+if (!receiveResponse(FP_CMD_FINGERPRINT_0, FP_CMD_FEATURE_INFORMATION, responseData, 2, &dataLen, &errorCode)) {
+  return false;
+}
+
+if (responseData[0] != 0x14 || responseData[1] != 0x00) {
+  return false;
+}
+return errorCode == FP_ERROR_SUCCESS;
+}
+
+bool FPM383C::uploadFingerprintImage(uint8_t* imageData){
+  uint16_t reg = 0;
+  uint8_t regID[2];
+  regID[0] = (reg >> 8) & 0xFF;
+  regID[1] = reg & 0xFF;
+  sendCommand(FP_CMD_FINGERPRINT_0, FP_CMD_UPLOAD_IMAGE, regID, 2);
+
+  uint32_t errorCode;
+  uint16_t dataLen;
+  uint8_t responseData[128];
+  if (!receiveResponse(FP_CMD_FINGERPRINT_0, FP_CMD_UPLOAD_IMAGE, responseData, 128, &dataLen, &errorCode)) {
+    return false;
+  }
+  setLED(FP_LED_MODE_ON, FP_LED_ALL_COLORS);
+  while(errorCode == FP_ERROR_SYSTEM_BUSY){
+  sendCommand(FP_CMD_FINGERPRINT_0, FP_CMD_UPLOAD_IMAGE, regID, 2);
+  if (!receiveResponse(FP_CMD_FINGERPRINT_0, FP_CMD_UPLOAD_IMAGE, responseData, 128, &dataLen, &errorCode)) {
+    return false;
+  }
+}
+if(errorCode == FP_ERROR_SUCCESS){
+setLED(FP_LED_MODE_ON, FP_LED_BLUE);
+
+for( int i = 0 ; i < 40 ; i++){
+  for(int j = 0; j < 128; j++){
+    // Process each byte of the response data
+    imageData[i * 128 + j] = responseData[j];
+  }
+  reg++;
+  regID[0] = (reg >> 8) & 0xFF;
+  regID[1] = reg & 0xFF;
+  sendCommand(FP_CMD_FINGERPRINT_0, FP_CMD_UPLOAD_IMAGE, regID, 2);
+  if (!receiveResponse(FP_CMD_FINGERPRINT_0, FP_CMD_UPLOAD_IMAGE, responseData, 128, &dataLen, &errorCode)) {
+  return false;
+}
+}
+
+setLED(FP_LED_MODE_ON, FP_LED_GREEN);
+}
+return errorCode == FP_ERROR_SUCCESS;
+}
+
+/////////////////////////////////////////////
 bool FPM383C::startEnrollment(uint8_t regIndex) {
   uint8_t data[1];
   data[0] = regIndex;

@@ -2,7 +2,8 @@
 #define FPM383C_H
 
 #include <Arduino.h>
-#include <SoftwareSerial.h>
+// #include <SoftwareSerial.h>
+#include <HardwareSerial.h>
 
 // Frame header
 #define FP_FRAME_HEADER_0 0xF1
@@ -39,7 +40,8 @@
 #define FP_CMD_DELETE_SYNC 0x36
 #define FP_CMD_CONFIRM_ENROLL 0x41
 #define FP_CMD_QUERY_CONFIRM 0x42
-
+#define FP_CMD_UPLOAD_IMAGE 0x02 // Fingerprint feature data upload
+#define FP_CMD_FEATURE_INFORMATION 0x01 // Fingerprint feature information upload
 // System commands
 #define FP_CMD_SET_PASSWORD 0x01
 #define FP_CMD_RESET_MODULE 0x02
@@ -113,7 +115,9 @@ struct FingerprintStorageInfo {
 
 class FPM383C {
 private:
-  SoftwareSerial* serial;
+  // SoftwareSerial* serial;
+  HardwareSerial* serial; // UART2 on ESP32
+
   uint32_t password;
   int touchPin;
   
@@ -135,6 +139,10 @@ public:
   bool heartbeat();
   bool reset();
   
+  // upload Fingerprint image
+  bool featureInformation(uint8_t respLen = 128);
+  bool uploadFingerprintImage(uint8_t* imageData);
+
   // Fingerprint enrollment
   bool startEnrollment(uint8_t regIndex);
   FingerprintEnrollResult queryEnrollmentResult();
